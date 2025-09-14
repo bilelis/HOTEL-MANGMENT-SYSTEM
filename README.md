@@ -63,6 +63,37 @@ frontend/
 
 ## 🚀 Quick Start
 
+### POS (Appsmith + PostgreSQL)
+
+1. Create PostgreSQL database and load schema/seed
+   ```bash
+   createdb hotel_pos
+   psql -d hotel_pos -f sql/schema.sql
+   psql -d hotel_pos -f sql/seed.sql
+   ```
+
+2. Import Appsmith app
+   - Open Appsmith
+   - Create a new app → Import → select `appsmith/Hotel_POS_ready.json`
+   - Configure datasource `POS_DB` with your DB host, port, database `hotel_pos`, username and password
+
+3. Test Login (PIN)
+   - Alice 1111 (Bar)
+   - Bob 2222 (Restaurant)
+   - Carol 3333 (Reception)
+   - Dina 9999 (Manager)
+
+4. Use Interfaces
+   - Bar / Restaurant / Reception pages only show relevant items
+   - Add to Bill, Update Qty, Remove, Cancel Item, Pay (Cash/Card)
+
+5. Manager Dashboard
+   - Sales by interface, pending payments, top-selling items
+
+6. AI Assistant
+   - Ask queries like: "Show all unpaid orders in Bar this week"
+   - Results appear in the table
+
 ### Prerequisites
 - Node.js 18+
 - Python 3.9+

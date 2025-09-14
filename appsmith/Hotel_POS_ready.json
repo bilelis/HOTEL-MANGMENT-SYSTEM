@@ -1,1 +1,212 @@
-{}
+{
+  "application": {
+    "name": "Hotel POS Pro",
+    "isPublic": false,
+    "color": "#553DE9",
+    "icon": "hotel",
+    "navigationSetting": {
+      "type": "TOP_STACKED",
+      "showNavbar": true
+    }
+  },
+  "datasources": [
+    {
+      "name": "POS_DB",
+      "pluginType": "DB",
+      "pluginName": "PostgreSQL",
+      "isMock": false,
+      "isTemplate": false,
+      "configuration": {
+        "connection": {
+          "mode": "READ_WRITE",
+          "ssl": { "authType": "DEFAULT" }
+        },
+        "datasourceConfiguration": {
+          "endpoints": [
+            { "host": "YOUR_DB_HOST", "port": 5432 }
+          ],
+          "authentication": {
+            "databaseName": "hotel_pos",
+            "username": "postgres",
+            "password": "postgres",
+            "authType": "dbAuth"
+          }
+        }
+      }
+    }
+  ],
+  "pages": [
+    {
+      "name": "Login",
+      "isHidden": false,
+      "dsl": {
+        "widgetName": "MainContainer",
+        "type": "CANVAS_WIDGET",
+        "detached": false,
+        "children": [
+          {
+            "widgetName": "Heading",
+            "type": "TEXT_WIDGET",
+            "text": "Hotel POS Login",
+            "fontSize": "HEADING1"
+          },
+          {
+            "widgetName": "PinInput",
+            "type": "INPUT_WIDGET_V2",
+            "label": "Enter 4-digit PIN",
+            "inputType": "PASSWORD",
+            "maxChars": 4,
+            "minChars": 4,
+            "regex": "^\\\d{4}$",
+            "errorMessage": "PIN must be 4 digits"
+          },
+          {
+            "widgetName": "LoginButton",
+            "type": "BUTTON_WIDGET",
+            "text": "Login",
+            "onClick": "{{login_validatePIN.run({pin: PinInput.text}).then(() => login_router.run()).catch(e => showAlert(e.message, 'error'))}}"
+          },
+          {
+            "widgetName": "Hint",
+            "type": "TEXT_WIDGET",
+            "text": "Test PINs: Alice 1111 (Bar), Bob 2222 (Restaurant), Carol 3333 (Reception), Dina 9999 (Manager)",
+            "fontSize": "PARAGRAPH"
+          }
+        ]
+      },
+      "actions": [
+        {
+          "name": "login_validatePIN",
+          "pluginType": "DB",
+          "datasource": "POS_DB",
+          "actionConfiguration": {
+            "body": "SELECT id, name, role, interface FROM employees WHERE is_active = TRUE AND crypt({{this.params.pin}}, pin_hash) = pin_hash LIMIT 1;"
+          },
+          "executeOnLoad": false,
+          "events": [
+            {
+              "event": "onSuccess",
+              "script": "{{storeValue('currentEmployee', { id: login_validatePIN.data[0]?.id, name: login_validatePIN.data[0]?.name, role: login_validatePIN.data[0]?.role, interface: login_validatePIN.data[0]?.interface });}}"
+            },
+            {
+              "event": "onFailure",
+              "script": "{{showAlert('Invalid PIN', 'error')}}"
+            }
+          ]
+        },
+        {
+          "name": "login_router",
+          "pluginType": "JS",
+          "body": "export default {\n  run() {\n    const emp = appsmith.store.currentEmployee;\n    if (!emp || !emp.interface) { showAlert('Unauthorized', 'error'); return; }\n    if (emp.interface === 'Bar') { navigateTo('Bar'); }\n    else if (emp.interface === 'Restaurant') { navigateTo('Restaurant'); }\n    else if (emp.interface === 'Reception') { navigateTo('Reception'); }\n    else { navigateTo('Dashboard'); }\n  }\n};"
+        }
+      ]
+    },
+    {
+      "name": "Bar",
+      "isHidden": false,
+      "dsl": {
+        "widgetName": "MainContainer",
+        "type": "CANVAS_WIDGET",
+        "children": [
+          { "widgetName": "Title", "type": "TEXT_WIDGET", "text": "Bar 🥂", "fontSize": "HEADING1", "textColor": "#7C3AED" },
+          { "widgetName": "ItemsTable", "type": "TABLE_WIDGET_V2", "tableData": "{{items_getByInterface.data}}", "dynamicBindingPathList": [{"key":"tableData"}],
+            "primaryColumns": {"name": {"type": "text"}, "price": {"type": "number"}},
+            "onRowSelected": "{{storeValue('selectedItem', Table1.selectedRow)}}" },
+          { "widgetName": "Qty", "type": "INPUT_WIDGET_V2", "label": "Quantity", "inputType": "NUMBER", "defaultText": "1", "minNum": 1 },
+          { "widgetName": "AddButton", "type": "BUTTON_WIDGET", "text": "Add to Bill", "onClick": "{{orders_getOrCreateOpenOrder.run().then(() => orderItems_addOrUpdate.run()).then(() => orders_getCurrentBill.run())}}" },
+          { "widgetName": "RemoveButton", "type": "BUTTON_WIDGET", "text": "Remove Item", "onClick": "{{orderItems_remove.run().then(() => orders_getCurrentBill.run())}}" },
+          { "widgetName": "UpdateQtyButton", "type": "BUTTON_WIDGET", "text": "Update Qty", "onClick": "{{orderItems_updateQty.run().then(() => orders_getCurrentBill.run())}}" },
+          { "widgetName": "CancelItemButton", "type": "BUTTON_WIDGET", "text": "Cancel Item", "onClick": "{{orderItems_cancel.run().then(() => orders_getCurrentBill.run())}}" },
+          { "widgetName": "BillTable", "type": "TABLE_WIDGET_V2", "tableData": "{{orders_getCurrentBill.data}}", "dynamicBindingPathList": [{"key":"tableData"}],
+            "derivedColumns": { "line_total": { "type": "number", "computedValue": "{{currentRow.quantity * currentRow.price_each}}" } },
+            "conditionalFormatting": [{
+              "column": "quantity",
+              "condition": "{{currentRow.quantity <= 0}}",
+              "style": { "cellBackground": "#FEE2E2", "fontColor": "#B91C1C" }
+            }]
+          },
+          { "widgetName": "PayCash", "type": "BUTTON_WIDGET", "text": "Pay (Cash)", "onClick": "{{orders_payCash.run().then(() => orders_getCurrentBill.run())}}" },
+          { "widgetName": "PayCard", "type": "BUTTON_WIDGET", "text": "Pay (Card)", "onClick": "{{orders_payCard.run().then(() => orders_getCurrentBill.run())}}" }
+        ]
+      },
+      "actions": [
+        { "name": "items_getByInterface", "pluginType": "DB", "datasource": "POS_DB", "executeOnLoad": true,
+          "actionConfiguration": { "body": "SELECT id, name, price FROM items WHERE interface = 'Bar' AND is_active = TRUE ORDER BY name;" } },
+        { "name": "orders_getOrCreateOpenOrder", "pluginType": "DB", "datasource": "POS_DB", "executeOnLoad": false,
+          "actionConfiguration": { "body": "WITH found AS ( SELECT id FROM orders WHERE employee_id = {{appsmith.store.currentEmployee.id}} AND interface = 'Bar' AND status = 'open' ORDER BY created_at DESC LIMIT 1 ), ins AS ( INSERT INTO orders (employee_id, interface) SELECT {{appsmith.store.currentEmployee.id}}, 'Bar' WHERE NOT EXISTS (SELECT 1 FROM found) RETURNING id ) SELECT id FROM found UNION ALL SELECT id FROM ins;" } },
+        { "name": "orderItems_addOrUpdate", "pluginType": "DB", "datasource": "POS_DB",
+          "actionConfiguration": { "body": "INSERT INTO order_items (order_id, item_id, quantity) VALUES ((SELECT id FROM orders WHERE employee_id = {{appsmith.store.currentEmployee.id}} AND interface = 'Bar' AND status='open' ORDER BY created_at DESC LIMIT 1), {{ItemsTable.selectedRow.id}}, {{Number(Qty.text)}}) ON CONFLICT (order_id, item_id) WHERE (is_cancelled = FALSE) DO UPDATE SET quantity = order_items.quantity + EXCLUDED.quantity;" } },
+        { "name": "orderItems_updateQty", "pluginType": "DB", "datasource": "POS_DB",
+          "actionConfiguration": { "body": "UPDATE order_items SET quantity = {{Number(Qty.text)}} WHERE order_id = (SELECT id FROM orders WHERE employee_id = {{appsmith.store.currentEmployee.id}} AND interface = 'Bar' AND status='open' ORDER BY created_at DESC LIMIT 1) AND item_id = {{ItemsTable.selectedRow.id}} AND is_cancelled = FALSE;" } },
+        { "name": "orderItems_remove", "pluginType": "DB", "datasource": "POS_DB",
+          "actionConfiguration": { "body": "UPDATE order_items SET is_cancelled = TRUE WHERE order_id = (SELECT id FROM orders WHERE employee_id = {{appsmith.store.currentEmployee.id}} AND interface = 'Bar' AND status='open' ORDER BY created_at DESC LIMIT 1) AND item_id = {{ItemsTable.selectedRow.id}} AND is_cancelled = FALSE;" } },
+        { "name": "orderItems_cancel", "pluginType": "DB", "datasource": "POS_DB",
+          "actionConfiguration": { "body": "UPDATE order_items SET is_cancelled = TRUE WHERE id = {{BillTable.selectedRow.order_item_id}};" } },
+        { "name": "orders_getCurrentBill", "pluginType": "DB", "datasource": "POS_DB", "executeOnLoad": true,
+          "actionConfiguration": { "body": "SELECT * FROM v_order_bill WHERE order_id = (SELECT id FROM orders WHERE employee_id = {{appsmith.store.currentEmployee.id}} AND interface = 'Bar' AND status='open' ORDER BY created_at DESC LIMIT 1);" } },
+        { "name": "orders_payCash", "pluginType": "DB", "datasource": "POS_DB",
+          "actionConfiguration": { "body": "SELECT * FROM fn_pay_order((SELECT id FROM orders WHERE employee_id = {{appsmith.store.currentEmployee.id}} AND interface = 'Bar' AND status='open' ORDER BY created_at DESC LIMIT 1), {{appsmith.store.currentEmployee.id}}, 'cash');" } },
+        { "name": "orders_payCard", "pluginType": "DB", "datasource": "POS_DB",
+          "actionConfiguration": { "body": "SELECT * FROM fn_pay_order((SELECT id FROM orders WHERE employee_id = {{appsmith.store.currentEmployee.id}} AND interface = 'Bar' AND status='open' ORDER BY created_at DESC LIMIT 1), {{appsmith.store.currentEmployee.id}}, 'card');" } }
+      ]
+    },
+    {
+      "name": "Restaurant",
+      "isHidden": false,
+      "cloneFromPage": "Bar",
+      "overrides": {
+        "title": "Restaurant 🍽️",
+        "interface": "Restaurant"
+      }
+    },
+    {
+      "name": "Reception",
+      "isHidden": false,
+      "cloneFromPage": "Bar",
+      "overrides": {
+        "title": "Reception 🛎️",
+        "interface": "Reception"
+      }
+    },
+    {
+      "name": "Dashboard",
+      "isHidden": false,
+      "dsl": {
+        "widgetName": "MainContainer",
+        "type": "CANVAS_WIDGET",
+        "children": [
+          { "widgetName": "Title", "type": "TEXT_WIDGET", "text": "Manager Dashboard", "fontSize": "HEADING1" },
+          { "widgetName": "SalesByInterface", "type": "CHART_WIDGET", "chartType": "BAR_CHART", "chartData": "{{dashboard_salesByInterface.data}}" },
+          { "widgetName": "PendingPayments", "type": "TABLE_WIDGET_V2", "tableData": "{{dashboard_pendingPayments.data}}" },
+          { "widgetName": "TopItems", "type": "TABLE_WIDGET_V2", "tableData": "{{dashboard_topItems.data}}" }
+        ]
+      },
+      "actions": [
+        { "name": "dashboard_salesByInterface", "pluginType": "DB", "datasource": "POS_DB", "executeOnLoad": true,
+          "actionConfiguration": { "body": "SELECT o.interface, SUM(t.amount)::numeric(10,2) AS total_sales FROM transactions t JOIN orders o ON o.id = t.order_id GROUP BY o.interface ORDER BY o.interface;" } },
+        { "name": "dashboard_pendingPayments", "pluginType": "DB", "datasource": "POS_DB", "executeOnLoad": true,
+          "actionConfiguration": { "body": "SELECT interface, COUNT(*) AS open_orders FROM orders WHERE status = 'open' GROUP BY interface ORDER BY open_orders DESC;" } },
+        { "name": "dashboard_topItems", "pluginType": "DB", "datasource": "POS_DB", "executeOnLoad": true,
+          "actionConfiguration": { "body": "SELECT it.name, SUM(oi.quantity) AS qty FROM order_items oi JOIN items it ON it.id = oi.item_id JOIN orders o ON o.id = oi.order_id WHERE o.status = 'paid' AND oi.is_cancelled = FALSE GROUP BY it.name ORDER BY qty DESC LIMIT 10;" } }
+      ]
+    },
+    {
+      "name": "AI Assistant",
+      "isHidden": false,
+      "dsl": {
+        "widgetName": "MainContainer",
+        "type": "CANVAS_WIDGET",
+        "children": [
+          { "widgetName": "Prompt", "type": "INPUT_WIDGET_V2", "label": "Ask about sales, inventory, reservations, employees", "inputType": "TEXT" },
+          { "widgetName": "AskButton", "type": "BUTTON_WIDGET", "text": "Ask", "onClick": "{{ai_router.run()}}" },
+          { "widgetName": "ResultTable", "type": "TABLE_WIDGET_V2", "tableData": "{{ai_query.data}}" }
+        ]
+      },
+      "actions": [
+        { "name": "ai_router", "pluginType": "JS",
+          "body": "export default {\n  run() {\n    const q = Prompt.text.toLowerCase();\n    // simple routing by keywords\n    if (q.includes('unpaid') && q.includes('bar')) {\n      return ai_query.run({ kind: 'UNPAID_BAR_WEEK' });\n    }\n    if (q.includes('top') && q.includes('items')) {\n      return ai_query.run({ kind: 'TOP_ITEMS' });\n    }\n    if (q.includes('sales') && q.includes('interface')) {\n      return ai_query.run({ kind: 'SALES_BY_INTERFACE' });\n    }\n    // default\n    return ai_query.run({ kind: 'SALES_BY_INTERFACE' });\n  }\n};" },
+        { "name": "ai_query", "pluginType": "DB", "datasource": "POS_DB",
+          "actionConfiguration": { "body": "{{(() => {\n  const k = this.params.kind;\n  if (k === 'UNPAID_BAR_WEEK') {\n    return `SELECT o.id, o.created_at FROM orders o WHERE o.status='open' AND o.interface='Bar' AND o.created_at >= now() - interval '7 days' ORDER BY o.created_at DESC;`;\n  }\n  if (k === 'TOP_ITEMS') {\n    return `SELECT it.name, SUM(oi.quantity) AS qty FROM order_items oi JOIN items it ON it.id = oi.item_id JOIN orders o ON o.id = oi.order_id WHERE o.status='paid' AND oi.is_cancelled = FALSE GROUP BY it.name ORDER BY qty DESC LIMIT 10;`;\n  }\n  if (k === 'SALES_BY_INTERFACE') {\n    return `SELECT o.interface, SUM(t.amount)::numeric(10,2) AS total_sales FROM transactions t JOIN orders o ON o.id = t.order_id GROUP BY o.interface ORDER BY o.interface;`;\n  }\n  return `SELECT 1 as result`;\n})()}}" }]
+    }
+  ]
+}
